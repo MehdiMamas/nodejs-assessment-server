@@ -4,8 +4,8 @@ const {
   returningCall,
   handleCall,
   handleUnanswered,
-} = require("../controllers/callController");
-const { getCallLogs } = require("../controllers/logController");
+} = require("../../controllers/callController");
+const { getCallLogs } = require("../../controllers/logController");
 
 const router = express.Router();
 
