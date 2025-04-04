@@ -1,15 +1,11 @@
-const twilio = require("twilio");
-const axios = require("axios");
-
-const {
-  TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN,
-  TWILIO_PHONE_NUMBER,
-  ELEVENLABS_API_KEY,
-} = process.env;
-
-const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 const { PromisifiedQuery } = require("../modules/db");
+const { createTwilioClient, makeCall, sendSms } = require("../modules/twilio");
+const { generateTtsAudio } = require("../modules/elevenlabs");
+const { transcribeRecording } = require("../modules/deepgram");
+
+const { NGROK_URL } = process.env;
+
+const client = createTwilioClient();
 
 const triggerCall = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -19,28 +15,20 @@ const triggerCall = async (req, res) => {
   }
 
   try {
-    const ttsResponse = await axios.post(
-      "https://api.elevenlabs.io/v1/text-to-speech",
-      {
-        text: "Hello, this is a reminder from your healthcare provider to confirm your medications for the day. Please confirm if you have taken your Aspirin, Cardivol, and Metformin today.",
-      },
-      {
-        headers: { Authorization: `Bearer ${ELEVENLABS_API_KEY}` },
-      }
+    const audioUrl = await generateTtsAudio(
+      "Hello, this is a reminder from your healthcare provider to confirm your medications for the day. Please confirm if you have taken your Aspirin, Cardivol, and Metformin today."
     );
 
-    const call = await client.calls.create({
-      to: phoneNumber,
-      from: TWILIO_PHONE_NUMBER,
-      twiml: `<Response><Play>${ttsResponse.data.audio_url}</Play></Response>`,
-      statusCallback: `${process.env.NGROK_URL}/api/handle-call`,
-      statusCallbackEvent: ["completed"],
-    });
+    const call = await makeCall(
+      client,
+      phoneNumber,
+      `<Response><Play>${audioUrl}</Play></Response>`,
+      `${NGROK_URL}/api/handle-call`
+    );
 
     console.log(`Call SID: ${call.sid}`);
     console.log(`Call Status: ${call.status}`);
 
-    // Log call details to the database
     await PromisifiedQuery(
       "INSERT INTO call_logs (phone_number, call_sid, status) VALUES (:phoneNumber, :callSid, :status)",
       { phoneNumber, callSid: call.sid, status: call.status }
@@ -57,19 +45,8 @@ const handleCall = async (req, res) => {
   const { CallSid, CallStatus, RecordingUrl } = req.body;
 
   try {
-    // Use Deepgram to transcribe the recording
-    const sttResponse = await axios.post(
-      "https://api.deepgram.com/v1/listen",
-      { url: RecordingUrl },
-      {
-        headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` },
-      }
-    );
+    const transcript = await transcribeRecording(RecordingUrl);
 
-    const transcript =
-      sttResponse.data.results.channels[0].alternatives[0].transcript;
-
-    // Update call log with transcription and recording URL
     await PromisifiedQuery(
       "UPDATE call_logs SET status = :status, recording_url = :recordingUrl, transcript = :transcript WHERE call_sid = :callSid",
       {
@@ -91,11 +68,11 @@ const handleUnanswered = async (req, res) => {
   const { phoneNumber } = req.body;
 
   try {
-    await client.messages.create({
-      to: phoneNumber,
-      from: TWILIO_PHONE_NUMBER,
-      body: "We called to check on your medication but couldn't reach you. Please call us back to confirm that you have taken your medication.",
-    });
+    await sendSms(
+      client,
+      phoneNumber,
+      "We called to check on your medication but couldn't reach you. Please call us back to confirm that you have taken your medication."
+    );
 
     console.log("SMS sent to:", phoneNumber);
     res.json({ message: "SMS sent successfully!" });
