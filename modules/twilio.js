@@ -11,8 +11,10 @@ const makeCall = async (client, to, from, statusCallback) => {
       to,
       from,
       twiml: process.env.TWILIO_PHONE_NUMBER,
+      machineDetection: "Enable",
       statusCallback,
-      statusCallbackEvent: ["completed"],
+      statusCallbackEvent: ["answered", "completed"],
+      statusCallbackMethod: "POST",
     });
   } catch (error) {
     console.error("Error making call:", error);

@@ -1,7 +1,7 @@
 const { PromisifiedQuery } = require("../modules/db");
 const { createTwilioClient, makeCall, sendSms } = require("../modules/twilio");
-const { generateTtsAudio } = require("../modules/elevenlabs");
 const { transcribeRecording } = require("../modules/deepgram");
+const { generateTtsAudio } = require("../modules/elevenlabs");
 
 const { NGROK_URL } = process.env;
 
@@ -42,20 +42,45 @@ const triggerCall = async (req, res) => {
 };
 
 const handleCall = async (req, res) => {
-  const { CallSid, CallStatus, RecordingUrl } = req.body;
+  const { CallSid, CallStatus, RecordingUrl, AnsweredBy } = req.body;
 
   try {
-    const transcript = await transcribeRecording(RecordingUrl);
+    if (
+      CallStatus === "no-answer" ||
+      (AnsweredBy && AnsweredBy.startsWith("machine"))
+    ) {
+      // Leave a voicemail
+      const voicemailTwiml = `
+        <Response>
+          <Say>
+            Hello, this is a reminder from your healthcare provider. We couldn't reach you, but please confirm if you have taken your Aspirin, Cardivol, and Metformin today. Thank you.
+          </Say>
+        </Response>
+      `;
 
-    await PromisifiedQuery(
-      "UPDATE call_logs SET status = :status, recording_url = :recordingUrl, transcript = :transcript WHERE call_sid = :callSid",
-      {
-        status: CallStatus,
-        recordingUrl: RecordingUrl,
-        transcript,
-        callSid: CallSid,
-      }
-    );
+      await makeCall(
+        client,
+        process.env.TWILIO_PHONE_NUMBER,
+        process.env.TWILIO_PHONE_NUMBER,
+        voicemailTwiml
+      );
+
+      console.log("Voicemail left for:", CallSid);
+    } else if (RecordingUrl) {
+      // Transcribe the recording
+      const transcript = await transcribeRecording(RecordingUrl);
+
+      // Update call log with transcription and recording URL
+      await PromisifiedQuery(
+        "UPDATE call_logs SET status = :status, recording_url = :recordingUrl, transcript = :transcript WHERE call_sid = :callSid",
+        {
+          status: CallStatus,
+          recordingUrl: RecordingUrl,
+          transcript,
+          callSid: CallSid,
+        }
+      );
+    }
 
     res.sendStatus(200);
   } catch (error) {

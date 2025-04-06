@@ -1,15 +1,16 @@
-const axios = require("axios");
+const { ElevenLabsClient } = require("elevenlabs");
+
+const client = new ElevenLabsClient({
+  apiKey: process.env.ELEVENLABS_API_KEY,
+});
 
 const generateTtsAudio = async (text) => {
   try {
-    const response = await axios.post(
-      "https://api.elevenlabs.io/v1/text-to-speech",
-      { text },
-      {
-        headers: { Authorization: `Bearer ${process.env.ELEVENLABS_API_KEY}` },
-      }
-    );
-    return response.data.audio_url;
+    return await client.textToSpeech.convert("9BWtsMINqrJLrRacOk9x", {
+      text,
+      model_id: "eleven_multilingual_v2",
+      output_format: "wav",
+    });
   } catch (error) {
     console.error("Error generating TTS audio:", error);
     throw error;

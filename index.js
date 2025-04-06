@@ -1,4 +1,5 @@
-require("dotenv").config({ path: "./.env" });
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const bodyParser = require("body-parser");
 const logger = require("./middleware/logger"); // Import the logger middleware
