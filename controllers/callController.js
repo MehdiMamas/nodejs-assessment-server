@@ -62,6 +62,11 @@ const handleCallCompleted = async (req, res) => {
       );
       console.log(`Call SID ${CallSid} updated to status "voicemail".`);
     } else if (AnsweredBy == undefined) {
+      await PromisifiedQuery(
+        "UPDATE call_logs SET status = 'sms sent' WHERE call_sid = :callSid",
+        { callSid: CallSid }
+      );
+
       sendSms(
         phone_number,
         "We called to check on your medication but couldn't reach you. Please call us back or take your medications if you haven't done so."
@@ -128,7 +133,7 @@ const returningCall = async (req, res) => {
   try {
     // Look up the last unanswered call for the calling number
     const [lastLog] = await PromisifiedQuery(
-      "SELECT * FROM call_logs WHERE phone_number = :phoneNumber AND (status = 'unanswered' OR status = 'voicemail') ORDER BY created_at DESC LIMIT 1",
+      "SELECT * FROM call_logs WHERE phone_number = :phoneNumber AND (status = 'unanswered' OR status = 'voicemail' or status = 'sms sent') ORDER BY created_at DESC LIMIT 1",
       { phoneNumber }
     );
 
