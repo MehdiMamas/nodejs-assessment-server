@@ -3,6 +3,7 @@ const {
   triggerCall,
   returningCall,
   handleRecordingStatus,
+  handleCallCompleted,
 } = require("../../controllers/callController");
 const { getCallLogs } = require("../../controllers/logController");
 
@@ -13,17 +14,6 @@ router.post("/receiving-call", returningCall);
 router.get("/logs", getCallLogs);
 router.post("/recording-status", handleRecordingStatus);
 
-router.post("/status-callback", (req, res) => {
-  const answeredBy = req.body.AnsweredBy;
-
-  if (answeredBy && answeredBy.startsWith("machine")) {
-    console.log("Voicemail detected. Leaving message...");
-    // log or change behavior if needed
-  } else {
-    console.log("Human answered.");
-  }
-
-  res.sendStatus(200);
-});
+router.post("/call-completed-callback", handleCallCompleted);
 
 module.exports = router;

@@ -49,6 +49,32 @@ const triggerCall = async (req, res) => {
     res.status(500).json({ message: "Failed to trigger call." });
   }
 };
+
+const handleCallCompleted = async (req, res) => {
+  const { CallSid, CallStatus, AnsweredBy, To: phone_number } = req.body;
+
+  try {
+    if (AnsweredBy && AnsweredBy.indexOf("machine") === 0) {
+      // Update the call log status to "voicemail"
+      await PromisifiedQuery(
+        "UPDATE call_logs SET status = 'voicemail' WHERE call_sid = :callSid",
+        { callSid: CallSid }
+      );
+      console.log(`Call SID ${CallSid} updated to status "voicemail".`);
+    } else if (AnsweredBy == undefined) {
+      sendSms(
+        phone_number,
+        "We called to check on your medication but couldn't reach you. Please call us back or take your medications if you haven't done so."
+      );
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Error handling call completion:", error);
+    res.sendStatus(500);
+  }
+};
+
 const handleRecordingStatus = async (req, res) => {
   const recordingUrl = req.body.RecordingUrl;
   const callSid = req.body.CallSid;
@@ -102,7 +128,7 @@ const returningCall = async (req, res) => {
   try {
     // Look up the last unanswered call for the calling number
     const [lastLog] = await PromisifiedQuery(
-      "SELECT * FROM call_logs WHERE phone_number = :phoneNumber AND status = 'unanswered' ORDER BY created_at DESC LIMIT 1",
+      "SELECT * FROM call_logs WHERE phone_number = :phoneNumber AND (status = 'unanswered' OR status = 'voicemail') ORDER BY created_at DESC LIMIT 1",
       { phoneNumber }
     );
 
@@ -150,4 +176,5 @@ module.exports = {
   triggerCall,
   returningCall,
   handleRecordingStatus,
+  handleCallCompleted,
 };
