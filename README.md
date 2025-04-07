@@ -69,10 +69,34 @@ This repository contains the backend code for the Medication Reminder System.
    - **Initialize the Database**:
      - The `init.sql` file will automatically set up the database and tables when the MySQL container starts.
 
+## API Key Setup Instructions
+
+1. **Deepgram**:
+
+   - Visit [https://console.deepgram.com/signup](https://console.deepgram.com/signup) to create an account.
+   - After signing up, navigate to the API Keys section in the dashboard.
+   - Generate a new API key and copy it to your `.env` file as `DEEPGRAM_API_KEY`.
+
+2. **Twilio**:
+
+   - Visit [https://www.twilio.com/try-twilio](https://www.twilio.com/try-twilio) to create an account.
+   - After signing up, go to the Console Dashboard to find your `Account SID` and `Auth Token`.
+   - Copy these values to your `.env` file as `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`.
+   - Purchase a Twilio phone number and configure it to forward incoming calls to:
+     ```
+     <YOUR_NGROK_URL>/api/receiving-call
+     ```
+
+3. **ElevenLabs**:
+   - Visit [https://beta.elevenlabs.io/](https://beta.elevenlabs.io/) to create an account.
+   - After signing up, navigate to the Profile section to find your API key.
+   - Copy the API key to your `.env` file as `ELEVENLABS_API_KEY`.
+
 ## Notes
 
 - Ensure the `.env` file is properly configured with your API keys.
 - Use Ngrok to expose your local server for Twilio webhooks.
+- Configure Twilio to send incoming calls to `/api/receiving-call`.
 - For unanswered calls, the system will attempt to leave a voicemail or send an SMS.
 - The system uses ElevenLabs for TTS and Deepgram for STT.
 
@@ -87,5 +111,5 @@ This repository contains the backend code for the Medication Reminder System.
   - Transcription (via Deepgram)
 
 - **API Endpoints**:
-  - `POST /api/call`: Trigger a call.
+  - `POST /api/call`: Trigger a call. Body: JSON with "phoneNumber", format "+1xxxxxxxxxx"
   - `GET /api/logs`: Fetch call logs.
