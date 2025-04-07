@@ -4,17 +4,16 @@ const createTwilioClient = () => {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
   return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 };
+const client = createTwilioClient();
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
-const makeCall = async (client, to, from, statusCallback) => {
+const makeCall = async (to, twiml) => {
   try {
-    return await client.calls.create({
+    return client.calls.create({
       to,
-      from,
-      twiml: process.env.TWILIO_PHONE_NUMBER,
+      from: TWILIO_PHONE_NUMBER,
+      twiml,
       machineDetection: "Enable",
-      statusCallback,
-      statusCallbackEvent: ["answered", "completed"],
-      statusCallbackMethod: "POST",
     });
   } catch (error) {
     console.error("Error making call:", error);
@@ -22,11 +21,11 @@ const makeCall = async (client, to, from, statusCallback) => {
   }
 };
 
-const sendSms = async (client, to, body) => {
+const sendSms = async (to, body) => {
   try {
     return await client.messages.create({
       to,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: TWILIO_PHONE_NUMBER,
       body,
     });
   } catch (error) {

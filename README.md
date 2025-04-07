@@ -50,44 +50,24 @@ This repository contains the backend code for the Medication Reminder System.
 
    - Copy the Ngrok URL and configure it in your Twilio webhook settings.
 
-6. Install and set up MySQL and phpMyAdmin:
+6. Set up MySQL and phpMyAdmin using Docker:
 
-   - **Install MySQL**:
+   - **Run Docker Compose**:
 
-     ```bash
-     brew install mysql
-     brew services start mysql
-     ```
-
-     - Verify MySQL is running:
-       ```bash
-       mysqladmin -u root -p status
-       ```
-     - Optionally, secure your MySQL installation:
-       ```bash
-       mysql_secure_installation
-       ```
-       Follow the prompts to set a root password and remove unnecessary defaults.
-
-   - **Install phpMyAdmin**:
-
-     ```bash
-     brew install phpmyadmin
-     ```
-
-     - To run phpMyAdmin using Docker:
+     - Ensure Docker is installed and running on your system.
+     - Navigate to the project directory and run:
        ```bash
        docker-compose up -d
        ```
-       - To restart the services:
-         ```bash
-         docker-compose down
-         docker-compose up -d
-         ```
+     - This will start MySQL and phpMyAdmin containers.
 
    - **Access phpMyAdmin**:
+
      - Open your browser and navigate to `http://localhost:9000`.
-     - Use your MySQL credentials to log in.
+     - Use your MySQL credentials to log in (as specified in the `docker-compose.yml` file).
+
+   - **Initialize the Database**:
+     - The `init.sql` file will automatically set up the database and tables when the MySQL container starts.
 
 ## Notes
 

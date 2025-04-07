@@ -1,11 +1,14 @@
 const { PromisifiedQuery } = require("../modules/db");
-const { createTwilioClient, makeCall, sendSms } = require("../modules/twilio");
-const { transcribeRecording } = require("../modules/deepgram");
+const { makeCall, sendSms } = require("../modules/twilio");
+const { transcribeWithDeepgram } = require("../modules/deepgram");
 const { generateTtsAudio } = require("../modules/elevenlabs");
+const fs = require("fs");
+const twilio = require("twilio");
 
-const { NGROK_URL } = process.env;
+const path = require("path");
+const { Readable } = require("stream");
 
-const client = createTwilioClient();
+const { NGROK_URL, TWILIO_AUTH_TOKEN, TWILIO_ACCOUNT_SID } = process.env;
 
 const triggerCall = async (req, res) => {
   const { phoneNumber } = req.body;
@@ -20,10 +23,16 @@ const triggerCall = async (req, res) => {
     );
 
     const call = await makeCall(
-      client,
       phoneNumber,
-      `<Response><Play>${audioUrl}</Play></Response>`,
-      `${NGROK_URL}/api/handle-call`
+      `<Response>
+      
+        <Play>${process.env.NGROK_URL + "/audios/" + audioUrl}</Play>
+        <Record maxLength="10" 
+          recordingStatusCallback="${
+            process.env.NGROK_URL
+          }/api/recording-status"
+          recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed" playBeep="true" trim="trim-silence" />
+      </Response>`
     );
 
     console.log(`Call SID: ${call.sid}`);
@@ -40,85 +49,105 @@ const triggerCall = async (req, res) => {
     res.status(500).json({ message: "Failed to trigger call." });
   }
 };
+const handleRecordingStatus = async (req, res) => {
+  const recordingUrl = req.body.RecordingUrl;
+  const callSid = req.body.CallSid;
 
-const handleCall = async (req, res) => {
-  const { CallSid, CallStatus, RecordingUrl, AnsweredBy } = req.body;
+  if (!recordingUrl) return res.sendStatus(400);
 
   try {
-    if (
-      CallStatus === "no-answer" ||
-      (AnsweredBy && AnsweredBy.startsWith("machine"))
-    ) {
-      // Leave a voicemail
-      const voicemailTwiml = `
-        <Response>
-          <Say>
-            Hello, this is a reminder from your healthcare provider. We couldn't reach you, but please confirm if you have taken your Aspirin, Cardivol, and Metformin today. Thank you.
-          </Say>
-        </Response>
-      `;
+    // Save the recording URL to a temporary file
+    const tempFilePath = path.join(__dirname, "../temp", `${callSid}.mp3`);
+    const writer = fs.createWriteStream(tempFilePath);
 
-      await makeCall(
-        client,
-        process.env.TWILIO_PHONE_NUMBER,
-        process.env.TWILIO_PHONE_NUMBER,
-        voicemailTwiml
-      );
+    const response = await fetch(`${recordingUrl}.mp3`, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(
+          `${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`
+        ).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+    const stream = Readable.fromWeb(response.body);
+    stream.pipe(writer);
 
-      console.log("Voicemail left for:", CallSid);
-    } else if (RecordingUrl) {
-      // Transcribe the recording
-      const transcript = await transcribeRecording(RecordingUrl);
+    await new Promise((resolve, reject) => {
+      writer.on("finish", resolve);
+      writer.on("error", reject);
+    });
 
-      // Update call log with transcription and recording URL
-      await PromisifiedQuery(
-        "UPDATE call_logs SET status = :status, recording_url = :recordingUrl, transcript = :transcript WHERE call_sid = :callSid",
-        {
-          status: CallStatus,
-          recordingUrl: RecordingUrl,
-          transcript,
-          callSid: CallSid,
-        }
-      );
-    }
+    // Transcribe the recording using the temporary file
+    const transcript = await transcribeWithDeepgram(tempFilePath);
+    console.log("📝 Transcript:", transcript);
+
+    // Update the call log with the transcript
+    await PromisifiedQuery(
+      "UPDATE call_logs SET transcript = :transcript,recording_url= :recording_url, status='completed' WHERE call_sid = :callSid",
+      { callSid, transcript, recording_url: `${recordingUrl}.mp3` }
+    );
+
+    // Delete the temporary file after transcription
+    fs.unlinkSync(tempFilePath);
 
     res.sendStatus(200);
-  } catch (error) {
-    console.error("Error handling call:", error);
+  } catch (err) {
+    console.error("Deepgram error:", err.message);
     res.sendStatus(500);
   }
 };
 
-const handleUnanswered = async (req, res) => {
-  const { phoneNumber } = req.body;
+const returningCall = async (req, res) => {
+  const { From: phoneNumber, CallSid } = req.body;
 
   try {
-    await sendSms(
-      client,
-      phoneNumber,
-      "We called to check on your medication but couldn't reach you. Please call us back to confirm that you have taken your medication."
+    // Look up the last unanswered call for the calling number
+    const [lastLog] = await PromisifiedQuery(
+      "SELECT * FROM call_logs WHERE phone_number = :phoneNumber AND status = 'unanswered' ORDER BY created_at DESC LIMIT 1",
+      { phoneNumber }
     );
 
-    console.log("SMS sent to:", phoneNumber);
-    res.json({ message: "SMS sent successfully!" });
-  } catch (error) {
-    console.error("Error sending SMS:", error);
-    res.status(500).json({ message: "Failed to send SMS." });
-  }
-};
+    if (!lastLog) {
+      return res
+        .status(404)
+        .send("No unanswered call log found for this number.");
+    }
 
-const returningCall = (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say(
-    "Thank you for returning our call. This is a reminder to confirm your medications for the day. Please confirm if you have taken your Aspirin, Cardivol, and Metformin today."
-  );
-  res.type("text/xml");
-  res.send(twiml.toString());
+    const twiml = new twilio.twiml.VoiceResponse();
+
+    let audioUrl = await generateTtsAudio(
+      "Thank you for returning our call. This is a reminder to confirm your medications for the day. Please confirm if you have taken your Aspirin, Cardivol, and Metformin today."
+    );
+    twiml.play(`${process.env.NGROK_URL}/audios/${audioUrl}`);
+
+    // Add a Record action to capture the user's response
+    twiml.record({
+      maxLength: 10,
+      action: `${process.env.NGROK_URL}/api/recording-status`,
+      method: "POST",
+      playBeep: true,
+      trim: "trim-silence",
+    });
+
+    // Insert a new call log with status "unanswered" and the new call SID
+    await PromisifiedQuery(
+      "INSERT INTO call_logs (phone_number, call_sid, status) VALUES (:phoneNumber, :callSid, :status)",
+      {
+        phoneNumber,
+        callSid: CallSid,
+        status: "unanswered",
+      }
+    );
+
+    res.type("text/xml");
+    res.send(twiml.toString());
+  } catch (error) {
+    console.error("Error handling returning call:", error);
+    res.status(500).send("Failed to handle returning call.");
+  }
 };
 
 module.exports = {
   triggerCall,
-  handleCall,
-  handleUnanswered,
   returningCall,
+  handleRecordingStatus,
 };

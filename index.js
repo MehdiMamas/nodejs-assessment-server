@@ -1,13 +1,17 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
-const bodyParser = require("body-parser");
 const logger = require("./middleware/logger"); // Import the logger middleware
 const apiRoute = require("./routes/api");
 
 const app = express();
-app.use(bodyParser.json()); // Use modularized routes
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(logger);
+
+// Serve static files
+app.use(express.static(path.join(__dirname, "static")));
+
 // Use modularized routes
 app.use("/api", apiRoute);
 

@@ -1,6 +1,6 @@
 const mysql = require("mysql2/promise");
 const namedPlaceholders = require("named-placeholders")();
-const chalk = require("chalk");
+const chalk = require("chalk"); // Revert to require for chalk
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "localhost",
@@ -23,8 +23,8 @@ function injectParams(sql, values) {
 }
 
 async function PromisifiedQuery(query, params = {}) {
+  const [sql, values] = namedPlaceholders(query, params);
   try {
-    const { sql, values } = namedPlaceholders(query, params);
     const [rows] = await pool.execute(sql, values);
     return rows;
   } catch (error) {
